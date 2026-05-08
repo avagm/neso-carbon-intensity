@@ -4,7 +4,6 @@ Bialek Tracing - Average Carbon Intensity Calculation
 Based on: Bialek, J., 1996. Tracing the flow of electricity.
 IEE Proceedings-Generation, Transmission and Distribution, 143(4), pp.313-320.
 
-
 """
 
 import numpy as np
