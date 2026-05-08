@@ -4,23 +4,6 @@ Imperial College London | Group Project
 ## Repository Structure
 Each team member has their own folder. Week outputs go in the relevant week subfolder.
 
-neso-carbon-intensity/
-├── ava/
-│   └── week1/
-│       ├── copper_plate.py
-│       └── copper_plate_result.png
-├── annie/
-│   └── week1/
-├── momo/
-│   └── week1/
-├── matthew/
-│   └── week1/
-├── adnan/
-│   └── week1/
-├── mert/
-│   └── week1/
-└── README.md
-
 ## Setup (do this once)
 
 ### 1. Clone PyPSA-GB
