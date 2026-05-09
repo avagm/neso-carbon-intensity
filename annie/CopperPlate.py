@@ -97,9 +97,9 @@ print(f"  Generators: {len(n.generators)}")
 # line if you have ≥32 GB RAM and want full half-hourly resolution.
 # ─────────────────────────────────────────────────────────────────────────────
  
-#n.set_snapshots(n.snapshots[:1488])    # first 31 days × 48 half-hours
+n.set_snapshots(n.snapshots[:1488])    # first 31 days × 48 half-hours
 # July (summer, solar dominance, low demand)
-n.set_snapshots(n.snapshots[8688:10128])  # ~Jul 1 to Jul 31
+#n.set_snapshots(n.snapshots[8688:10128])  # ~Jul 1 to Jul 31
 # snapshot_weightings stays at default 0.5 (half-hourly)
 print(f"\n  Subset to hourly resolution: {len(n.snapshots)} snapshots")
  
@@ -195,8 +195,11 @@ end_ts   = pd.Timestamp(n.snapshots[-1]).tz_localize('UTC') + pd.Timedelta(hours
  
 neso_df = fetch_neso_chunked(start_ts, end_ts)
 neso_df.index = neso_df.index.tz_convert('UTC').tz_localize(None)  # match PyPSA naive index
-neso_actual = neso_df['actual'].dropna()
-print(f"  Fetched {len(neso_actual)} NESO actual values")
+# Use actual where available, fall back to forecast (API often returns null actual for older months)
+neso_actual = neso_df['actual'].fillna(neso_df['forecast']).dropna()
+print(f"  Fetched {len(neso_actual)} NESO values  "
+      f"(actual: {neso_df['actual'].notna().sum()}, "
+      f"forecast fallback: {neso_df['actual'].isna().sum()})")
  
  
 # ─────────────────────────────────────────────────────────────────────────────
@@ -208,11 +211,16 @@ print(f"  Fetched {len(neso_actual)} NESO actual values")
 common = ci.index.intersection(neso_actual.index)
 ci_a   = ci.loc[common]
 neso_a = neso_actual.loc[common]
- 
+
+print(f"  Overlapping timestamps: {len(common)} "
+      f"(model: {len(ci)}, NESO: {len(neso_actual)})")
+if len(common) > 0:
+    print(f"  Overlap range: {common[0]} → {common[-1]}")
+
 if len(common) == 0:
     print("\n  WARNING: No overlapping timestamps between model and NESO.")
-    print(f"    Model index: {ci.index[0]} → {ci.index[-1]} (tz={ci.index.tz})")
-    print(f"    NESO index:  {neso_hourly.index[0]} → {neso_hourly.index[-1]} (tz={neso_hourly.index.tz})")
+    print(f"    Model index sample: {list(ci.index[:3])}")
+    print(f"    NESO  index sample: {list(neso_actual.index[:3])}")
 else:
     mae  = (ci_a - neso_a).abs().mean()
     rmse = ((ci_a - neso_a) ** 2).mean() ** 0.5
@@ -237,32 +245,45 @@ else:
 # ─────────────────────────────────────────────────────────────────────────────
  
 if len(common) > 0:
-    fig, axes = plt.subplots(3, 1, figsize=(14, 11), sharex=True)
+    import matplotlib.dates as mdates
+
+    # Convert to plain Python datetimes — matplotlib handles these reliably
+    # on all platforms/versions, unlike pandas DatetimeIndex directly
+    x_cmp  = [t.to_pydatetime() for t in common]
+    x_full = [t.to_pydatetime() for t in n.snapshots]
+
+    fig, axes = plt.subplots(3, 1, figsize=(14, 11))
     fig.suptitle(
         f"Copper-Plate vs NESO  |  MAE={mae:.1f}  RMSE={rmse:.1f}  r={corr:.3f}",
         fontsize=13, fontweight='bold'
     )
- 
-    # Panel 1
+
+    # Panel 1 — CI comparison
     ax = axes[0]
-    neso_a.plot(ax=ax, color='darkorange', lw=1.2, label='NESO actual')
-    ci_a.plot(ax=ax, color='steelblue', lw=1.0, ls='--', label='Copper-plate (ours)')
+    ax.plot(x_cmp, neso_a.values, color='darkorange', lw=1.2, label='NESO actual')
+    ax.plot(x_cmp, ci_a.values,   color='steelblue',  lw=1.0, ls='--', label='Copper-plate (ours)')
+    ax.set_xlim(x_cmp[0], x_cmp[-1])
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
+    ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO))
     ax.set_ylabel('gCO₂/kWh')
     ax.set_title('National average carbon intensity')
     ax.legend(loc='upper right')
     ax.grid(alpha=0.3)
- 
-    # Panel 2
+
+    # Panel 2 — residual
     ax = axes[1]
-    residual = ci_a - neso_a
-    residual.plot(ax=ax, color='crimson', lw=0.8)
-    ax.fill_between(residual.index, 0, residual, alpha=0.2, color='crimson')
+    residual = (ci_a - neso_a).values
+    ax.plot(x_cmp, residual, color='crimson', lw=0.8)
+    ax.fill_between(x_cmp, 0, residual, alpha=0.2, color='crimson')
     ax.axhline(0, color='black', lw=0.8, ls='--')
+    ax.set_xlim(x_cmp[0], x_cmp[-1])
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
+    ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO))
     ax.set_ylabel('Residual (gCO₂/kWh)')
     ax.set_title(f'Our model minus NESO actual  |  bias = {bias:+.1f} gCO₂/kWh')
     ax.grid(alpha=0.3)
- 
-    # Panel 3 — generation mix (now uses dispatch_by_carrier, not raw dispatch)
+
+    # Panel 3 — generation mix
     ax = axes[2]
     fuel_colours = {
         'CCGT':            '#f4a460',
@@ -288,12 +309,15 @@ if len(common) > 0:
     plot_fuels = [f for f in fuel_colours if f in dispatch_by_carrier.columns]
     if plot_fuels:
         gen_pct = dispatch_by_carrier[plot_fuels].div(total_load, axis=0) * 100
-        gen_pct.plot.area(
-            ax=ax,
-            color=[fuel_colours[f] for f in plot_fuels],
-            linewidth=0,
-            legend=True,
+        ax.stackplot(
+            x_full,
+            [gen_pct[f].values for f in plot_fuels],
+            colors=[fuel_colours[f] for f in plot_fuels],
+            labels=plot_fuels,
         )
+        ax.set_xlim(x_full[0], x_full[-1])
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
+    ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO))
     ax.set_ylabel('% of demand met')
     ax.set_title('Generation mix')
     ax.legend(loc='upper right', ncol=4, fontsize=7)
