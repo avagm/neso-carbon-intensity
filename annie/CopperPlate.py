@@ -4,12 +4,8 @@ import numpy as np
 import requests
 import matplotlib.pyplot as plt
  
-# ── Carbon emission factors (gCO2/kWh) ────────────────────────────────────────
-# Keys MUST match the carrier names PyPSA-GB actually uses (case-sensitive).
-# Verified from the dashboard output: CCGT, OCGT, EU_import, advanced_biofuel,
-# biogas, coal, landfill_gas, large_hydro, nuclear, oil, sewage_gas,
-# shoreline_wave, small_hydro, solar_pv, tidal_stream, waste_to_energy,
-# wind_offshore, wind_onshore.
+# Carbon emission factors (gCO2/kWh) 
+
 CARBON_FACTORS = {
     'CCGT':             394,
     'OCGT':             651,
@@ -29,13 +25,11 @@ CARBON_FACTORS = {
     'landfill_gas':     490,
     'sewage_gas':       490,
     'waste_to_energy':  580,
-    'EU_import':        250,   # ~EU grid average 2023
+    'EU_import':        250,   
 }
  
- 
-# ─────────────────────────────────────────────────────────────────────────────
+
 # STEP 1: Load the network
-# ─────────────────────────────────────────────────────────────────────────────
  
 print("Loading network...")
 n = pypsa.Network("resources/network/CopperPlate_2023.nc")
@@ -55,10 +49,7 @@ for carrier in sorted(n.generators.carrier.unique()):
     factor = CARBON_FACTORS.get(carrier, '*** NOT IN DICT ***')
     print(f"    {carrier:<25} {total_mw:>8.0f} MW   EI={factor} gCO2/kWh")
  
- 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 2: Collapse to a single copper-plate bus
-# ─────────────────────────────────────────────────────────────────────────────
  
 print("\nCollapsing to single bus...")
  
@@ -83,39 +74,26 @@ if len(n.transformers) > 0:
 # Drop the original buses
 original_buses = n.buses.index[n.buses.index != "GB_copper"].tolist()
 n.remove("Bus", original_buses)
- 
 print(f"\n=== Network after copper-plate collapse ===")
 print(f"  Buses:      {len(n.buses)}  (should be 1)")
 print(f"  Lines:      {len(n.lines)}  (should be 0)")
 print(f"  Links:      {len(n.links)}  (should be 0)")
 print(f"  Generators: {len(n.generators)}")
  
+# STEP 2.5: SUBSET SNAPSHOTS 
  
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 2.5: SUBSET SNAPSHOTS (memory fix for 16 GB machines)
-# Halves resolution to hourly, keeps full year coverage. Removes the [::2]
-# line if you have ≥32 GB RAM and want full half-hourly resolution.
-# ─────────────────────────────────────────────────────────────────────────────
- 
-#n.set_snapshots(n.snapshots[:1488])    # first 31 days × 48 half-hours
+n.set_snapshots(n.snapshots[:1488])    # first 31 days × 48 half-hours
 # July (summer, solar dominance, low demand)
-n.set_snapshots(n.snapshots[8688:10128])  # ~Jul 1 to Jul 31
+#n.set_snapshots(n.snapshots[8688:10128])  # ~Jul 1 to Jul 31
 # snapshot_weightings stays at default 0.5 (half-hourly)
 print(f"\n  Subset to hourly resolution: {len(n.snapshots)} snapshots")
- 
- 
-# Sanitize before solving — fixes the "undefined carriers" warnings
 n.consistency_check()
  
- 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 3: Solve (economic dispatch)
-# ─────────────────────────────────────────────────────────────────────────────
  
 print("\nSolving economic dispatch with Gurobi...")
 n.optimize(solver_name="gurobi")
 print("Solved.")
- 
 total_gen    = n.generators_t.p.sum(axis=1)
 total_demand = n.loads_t.p_set.sum(axis=1)
 balance      = total_gen - total_demand
@@ -124,10 +102,7 @@ print(f"    Max imbalance:  {balance.abs().max():.2f} MW (should be near zero)")
 print(f"    Avg generation: {total_gen.mean():.0f} MW")
 print(f"    Avg demand:     {total_demand.mean():.0f} MW")
  
- 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 4: Carbon intensity (aggregate dispatch by carrier first — much faster)
-# ─────────────────────────────────────────────────────────────────────────────
  
 print("\nCalculating carbon intensity...")
  
@@ -163,10 +138,7 @@ contrib = emissions_by_carrier.div(total_load, axis=0).mean()
 for carrier, val in contrib[contrib > 0.1].sort_values(ascending=False).items():
     print(f"    {carrier:<25} {val:>6.1f}")
  
- 
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 5: Fetch NESO actual carbon intensity (chunked: API max ~30 days)
-# ─────────────────────────────────────────────────────────────────────────────
+# STEP 5: Fetch NESO actual carbon intensity 
  
 print("\nFetching NESO actual carbon intensity from API...")
  
@@ -195,24 +167,26 @@ end_ts   = pd.Timestamp(n.snapshots[-1]).tz_localize('UTC') + pd.Timedelta(hours
  
 neso_df = fetch_neso_chunked(start_ts, end_ts)
 neso_df.index = neso_df.index.tz_convert('UTC').tz_localize(None)  # match PyPSA naive index
-neso_actual = neso_df['actual'].dropna()
-print(f"  Fetched {len(neso_actual)} NESO actual values")
+neso_actual = neso_df['actual'].fillna(neso_df['forecast']).dropna()
+print(f"  Fetched {len(neso_actual)} NESO values  "
+      f"(actual: {neso_df['actual'].notna().sum()}, "
+      f"forecast fallback: {neso_df['actual'].isna().sum()})")
  
- 
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 6: Compare (resample NESO to hourly to align with our snapshots)
-# ─────────────────────────────────────────────────────────────────────────────
- 
-# NESO is half-hourly
+# STEP 6: Compare our model's CI to NESO actual
  
 common = ci.index.intersection(neso_actual.index)
 ci_a   = ci.loc[common]
 neso_a = neso_actual.loc[common]
- 
+
+print(f"  Overlapping timestamps: {len(common)} "
+      f"(model: {len(ci)}, NESO: {len(neso_actual)})")
+if len(common) > 0:
+    print(f"  Overlap range: {common[0]} → {common[-1]}")
+
 if len(common) == 0:
     print("\n  WARNING: No overlapping timestamps between model and NESO.")
-    print(f"    Model index: {ci.index[0]} → {ci.index[-1]} (tz={ci.index.tz})")
-    print(f"    NESO index:  {neso_hourly.index[0]} → {neso_hourly.index[-1]} (tz={neso_hourly.index.tz})")
+    print(f"    Model index sample: {list(ci.index[:3])}")
+    print(f"    NESO  index sample: {list(neso_actual.index[:3])}")
 else:
     mae  = (ci_a - neso_a).abs().mean()
     rmse = ((ci_a - neso_a) ** 2).mean() ** 0.5
@@ -231,38 +205,45 @@ else:
     print(f"  NESO mean CI   = {neso_a.mean():.1f} gCO2/kWh")
     print(f"{'='*50}")
  
- 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 7: Plot
-# ─────────────────────────────────────────────────────────────────────────────
  
 if len(common) > 0:
-    fig, axes = plt.subplots(3, 1, figsize=(14, 11), sharex=True)
+    import matplotlib.dates as mdates
+    x_cmp  = [t.to_pydatetime() for t in common]
+    x_full = [t.to_pydatetime() for t in n.snapshots]
+
+    fig, axes = plt.subplots(3, 1, figsize=(14, 11))
     fig.suptitle(
         f"Copper-Plate vs NESO  |  MAE={mae:.1f}  RMSE={rmse:.1f}  r={corr:.3f}",
         fontsize=13, fontweight='bold'
     )
- 
-    # Panel 1
+
+    # Panel 1 — CI comparison
     ax = axes[0]
-    neso_a.plot(ax=ax, color='darkorange', lw=1.2, label='NESO actual')
-    ci_a.plot(ax=ax, color='steelblue', lw=1.0, ls='--', label='Copper-plate (ours)')
+    ax.plot(x_cmp, neso_a.values, color='darkorange', lw=1.2, label='NESO actual')
+    ax.plot(x_cmp, ci_a.values,   color='steelblue',  lw=1.0, ls='--', label='Copper-plate (ours)')
+    ax.set_xlim(x_cmp[0], x_cmp[-1])
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
+    ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO))
     ax.set_ylabel('gCO₂/kWh')
     ax.set_title('National average carbon intensity')
     ax.legend(loc='upper right')
     ax.grid(alpha=0.3)
- 
-    # Panel 2
+
+    # Panel 2 — residual
     ax = axes[1]
-    residual = ci_a - neso_a
-    residual.plot(ax=ax, color='crimson', lw=0.8)
-    ax.fill_between(residual.index, 0, residual, alpha=0.2, color='crimson')
+    residual = (ci_a - neso_a).values
+    ax.plot(x_cmp, residual, color='crimson', lw=0.8)
+    ax.fill_between(x_cmp, 0, residual, alpha=0.2, color='crimson')
     ax.axhline(0, color='black', lw=0.8, ls='--')
+    ax.set_xlim(x_cmp[0], x_cmp[-1])
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
+    ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO))
     ax.set_ylabel('Residual (gCO₂/kWh)')
     ax.set_title(f'Our model minus NESO actual  |  bias = {bias:+.1f} gCO₂/kWh')
     ax.grid(alpha=0.3)
- 
-    # Panel 3 — generation mix (now uses dispatch_by_carrier, not raw dispatch)
+
+    # Panel 3 — generation mix
     ax = axes[2]
     fuel_colours = {
         'CCGT':            '#f4a460',
@@ -288,12 +269,15 @@ if len(common) > 0:
     plot_fuels = [f for f in fuel_colours if f in dispatch_by_carrier.columns]
     if plot_fuels:
         gen_pct = dispatch_by_carrier[plot_fuels].div(total_load, axis=0) * 100
-        gen_pct.plot.area(
-            ax=ax,
-            color=[fuel_colours[f] for f in plot_fuels],
-            linewidth=0,
-            legend=True,
+        ax.stackplot(
+            x_full,
+            [gen_pct[f].values for f in plot_fuels],
+            colors=[fuel_colours[f] for f in plot_fuels],
+            labels=plot_fuels,
         )
+        ax.set_xlim(x_full[0], x_full[-1])
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
+    ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO))
     ax.set_ylabel('% of demand met')
     ax.set_title('Generation mix')
     ax.legend(loc='upper right', ncol=4, fontsize=7)
