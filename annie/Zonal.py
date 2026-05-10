@@ -122,7 +122,7 @@ for name, row in n.links.iterrows():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 2: Subset snapshots (same July window as CopperPlate for comparison)
+# STEP 2: Subset snapshots (same January window as CopperPlate for comparison)
 # ─────────────────────────────────────────────────────────────────────────────
 
 n.set_snapshots(n.snapshots[:1488])  # ~Jan 1–31 (half-hourly)
