@@ -10,11 +10,12 @@ as the validation target.
 ```
 neso-carbon-intensity/
 ├── README.md
-├── Scripts/                Pipeline scripts
+├── Scripts/                Pipeline scripts (incl. bialek_tracing_v2.py)
 ├── Results/
 │   ├── week 1/             Copperplate and 17-zone outputs
 │   └── week 2/             Pending
-└── bialek_tracing_v2/      Shared Bialek tracing notebook
+├── Data/
+└── Docs/
 ```
 
 Per-member directories from earlier weeks have been folded in
