@@ -1,0 +1,23 @@
+series,metric,value
+Zonal 17-bus,mean,155.2758109193504
+Zonal 17-bus,min,0.5064131013853721
+Zonal 17-bus,max,334.03641865983
+Zonal 17-bus,std,87.28574186287597
+Zonal 17-bus,vs_neso_bias,3.6463103154121557
+Zonal 17-bus,vs_neso_rmse,100.5782730942898
+Zonal 17-bus,vs_neso_mae,82.25873232655451
+Zonal 17-bus,vs_neso_pearson_r,0.12956604433126
+Zonal 17-bus,n_hours_aligned,8713.0
+Reduced 32-bus,mean,165.16264945872675
+Reduced 32-bus,min,9.429405873153788
+Reduced 32-bus,max,325.79439315251085
+Reduced 32-bus,std,74.4294758864683
+Reduced 32-bus,vs_neso_bias,13.378327068820338
+Reduced 32-bus,vs_neso_rmse,91.08009720365953
+Reduced 32-bus,vs_neso_mae,73.66810427848947
+Reduced 32-bus,vs_neso_pearson_r,0.1430117809926606
+Reduced 32-bus,n_hours_aligned,8713.0
+NESO actual,mean,152.13564379159973
+NESO actual,min,0.0
+NESO actual,max,307.5
+NESO actual,std,62.556284005251335
