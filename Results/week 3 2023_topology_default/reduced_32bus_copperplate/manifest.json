@@ -1,0 +1,60 @@
+{
+  "generated_utc": "2026-05-24T10:22:32+00:00",
+  "script": "system_carbon_intensity.py",
+  "label": "Reduced 32-bus copperplate",
+  "network_path": "C:\\Users\\user\\projects\\personalPypsa\\results\\2023_topology_default\\reduced_32bus_copperplate\\network.nc",
+  "network_basename": "network.nc",
+  "network_sha256": "275c7e5a7024355431fbd36a5a427666646b9a4f9a11317b4e727caff07055a2",
+  "pypsa_gb_commit": "074ea25ec0ca83ecfd3703b2af3a820a25518c50",
+  "n_buses": 34,
+  "n_generators": 2757,
+  "n_storage_units": 81,
+  "n_snapshots": 8760,
+  "snapshot_first": "2023-01-01 00:00:00",
+  "snapshot_last": "2023-12-31 23:00:00",
+  "neso_carrier_factors_gCO2_per_kWh": {
+    "wind_onshore": 0.0,
+    "wind_offshore": 0.0,
+    "solar_pv": 0.0,
+    "large_hydro": 0.0,
+    "small_hydro": 0.0,
+    "tidal_stream": 0.0,
+    "shoreline_wave": 0.0,
+    "nuclear": 0.0,
+    "biomass": 120.0,
+    "biogas": 120.0,
+    "landfill_gas": 120.0,
+    "sewage_gas": 120.0,
+    "advanced_biofuel": 120.0,
+    "CCGT": 394.0,
+    "OCGT": 651.0,
+    "coal": 937.0,
+    "oil": 935.0,
+    "waste_to_energy": 300.0,
+    "load_shedding": 0.0
+  },
+  "neso_interconnector_factors_gCO2_per_kWh": {
+    "Netherlands": 474.0,
+    "France": 53.0,
+    "Ireland": 458.0,
+    "Belgium": 300.0,
+    "Norway": 35.0,
+    "Denmark": 130.0
+  },
+  "unmatched": {
+    "unmatched_carriers": {},
+    "unmatched_interconnector_countries": {}
+  },
+  "headline": {
+    "annual_mean_hourly_gCO2_per_kWh": 133.503,
+    "annual_generation_weighted_gCO2_per_kWh": 135.805,
+    "min_gCO2_per_kWh": 0.0,
+    "max_gCO2_per_kWh": 319.931,
+    "total_generation_twh": 274.9873,
+    "total_emissions_Mt": 37.3447
+  },
+  "software": {
+    "pypsa": "1.2.0",
+    "python": "3.12.12"
+  }
+}
