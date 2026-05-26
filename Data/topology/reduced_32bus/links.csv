@@ -1,0 +1,8 @@
+name,bus0,bus1,carrier,p_nom_mw,length_km
+IC_Britned,Kemsley,HVDC_External_Netherlands_Maasvlakte,DC,1000.0,0.0
+IC_IFA,Sellindge,HVDC_External_France_Calais,DC,1988.0,0.0
+IC_IFA2,Lovedean,HVDC_External_France_Calais,DC,1000.0,0.0
+IC_Nemo Link,Sellindge,HVDC_External_Belgium_Zeebrugge,DC,1020.0,0.0
+IC_NS Link,Stella West,HVDC_External_Norway_Kvilldal,DC,1400.0,0.0
+IC_ElecLink,Sellindge,HVDC_External_France_Calais,DC,1000.0,0.0
+IC_East West Interconnector,Deeside,HVDC_External_Ireland_Rush_North_Beach,DC,505.0,0.0
