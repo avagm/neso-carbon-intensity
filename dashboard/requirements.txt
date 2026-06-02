@@ -1,0 +1,14 @@
+# Dashboard runtime dependencies. The carbon-intensity data is pre-computed by
+# the toolkit scripts (system_carbon_intensity.py, extract_dashboard_data.py),
+# so the dashboard itself needs no PyPSA or solver, only a plotting stack.
+# streamlit >= 1.45 for the width="stretch" chart sizing; plotly >= 6.1 for the
+# Scattermap and Choroplethmap (MapLibre) traces used by the geographical map.
+streamlit>=1.45
+pandas>=2.0
+numpy>=1.24
+plotly>=6.1
+
+# Optional, dev only: kaleido is needed solely by
+# analysis/render_dashboard_gallery.py to export static preview PNGs. The
+# dashboard does not import it.
+# kaleido>=1.0

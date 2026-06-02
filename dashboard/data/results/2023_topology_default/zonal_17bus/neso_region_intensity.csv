@@ -1,0 +1,15 @@
+regionid,shortname,n_buses,n_buses_with_generation,total_emissions_t,gen_view_gCO2_per_kWh,total_generation_twh,dominant_carrier,fill_method
+1.0,North Scotland,7,7,1352030.4,48.36,27.9566,wind_offshore,buses
+2.0,South Scotland,2,2,407432.4,16.21,25.1422,nuclear,buses
+3.0,North West England,0,0,0.0,23.52,0.0,nuclear,nearest_bus
+4.0,North East England,2,2,5921598.6,207.0,28.6062,CCGT,buses
+5.0,Yorkshire,0,0,0.0,318.07,0.0,CCGT,nearest_bus
+6.0,North Wales and Merseyside,1,1,3273342.3,82.17,39.8384,nuclear,buses
+7.0,South Wales,1,1,402727.2,57.63,6.988,wind_onshore,buses
+8.0,West Midlands,0,0,0.0,57.63,0.0,wind_onshore,nearest_bus
+9.0,East Midlands,2,2,5274211.0,123.14,42.8322,wind_offshore,buses
+10.0,East England,1,1,7154766.7,259.63,27.5574,nuclear,buses
+11.0,South West England,1,1,3602347.3,300.31,11.9953,CCGT,buses
+12.0,South England,1,1,4377166.7,300.93,14.5456,CCGT,buses
+13.0,London,1,1,2727528.8,283.22,9.6303,waste_to_energy,buses
+14.0,South East England,1,1,1620977.8,106.27,15.2536,wind_offshore,buses
