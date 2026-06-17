@@ -55,7 +55,7 @@ TOPOLOGIES: dict[str, dict] = {
                                    "dir": "reduced_32bus_copperplate",
                                    "has_map": False, "provisional": False,
                                    "is_model": True},
-    "etys_2000bus": {"label": "ETYS 2000-bus (provisional)",
+    "etys_2000bus": {"label": "ETYS 2000-bus",
                      "dir": "etys_2000bus", "has_map": True,
                      "provisional": True, "is_model": True},
 }
@@ -97,6 +97,40 @@ def load_neso_hourly() -> pd.Series:
     # 2023 calendar so the series aligns one-to-one with the model snapshots.
     s = s[s.index >= "2023-01-01 00:00"]
     return s.dropna()
+
+
+@st.cache_data(show_spinner=False)
+def load_neso_hourly_filled() -> tuple[pd.Series, int]:
+    """
+    NESO actual on the full 8760-hour grid with the published gaps filled, for
+    display only. NESO did not publish an actual carbon intensity for ~47 hours
+    of 2023: a 45.5-hour outage on 20-22 October (rows entirely absent) plus five
+    isolated settlement periods (present but null). Those isolated hours take the
+    NESO forecast; the October block is time-interpolated. Returns the filled
+    series and the number of filled hours.
+
+    This backs the calendar heatmap so it has no confusing blank cells. Every
+    statistic (Overview, Validation, the combined frame) uses load_neso_hourly(),
+    the pure actual series, so headline numbers are unaffected by this fill.
+    """
+    df = pd.read_csv(_data("results/neso_2023/national_intensity.csv"))
+    idx = pd.to_datetime(df["from"], utc=True)
+    grid = pd.date_range("2023-01-01 00:00", "2023-12-31 23:30", freq="30min",
+                         tz="UTC")
+    actual = pd.Series(df["actual"].to_numpy(), index=idx).reindex(grid) \
+        .resample("1h").mean()
+    fcast = pd.Series(df["forecast"].to_numpy(), index=idx).reindex(grid) \
+        .resample("1h").mean()
+    actual.index = actual.index.tz_localize(None)
+    fcast.index = fcast.index.tz_localize(None)
+
+    missing = actual.isna()
+    filled = actual.copy()
+    filled[missing] = fcast[missing]                       # NESO forecast first
+    filled = filled.interpolate(method="time", limit_area="inside")  # then bridge
+    filled.name = "neso_actual"
+    filled.index.name = "timestamp"
+    return filled, int(missing.sum())
 
 
 @st.cache_data(show_spinner=False)
@@ -178,6 +212,50 @@ def load_bus_catchments(key: str) -> tuple[dict, pd.DataFrame] | None:
     gj = json.loads(path.read_text(encoding="utf-8"))
     props = pd.DataFrame([f["properties"] for f in gj["features"]])
     return gj, props
+
+
+@st.cache_data(show_spinner=False)
+def load_bus_carrier(key: str, kind: str = "generation") -> pd.DataFrame | None:
+    """
+    Per-bus per-carrier annual matrix for one topology (index=bus, one column
+    per carrier), or None if not built. kind in {"generation", "emissions"};
+    generation is MWh, emissions tCO2. Drives the per-catchment mix pie (a
+    catchment is one bus). Built by extract_dashboard_data.py --per-bus.
+    """
+    fname = (f"bus_carrier_{kind}.csv")
+    path = _topo_file(key, fname)
+    if not path.exists():
+        return None
+    return pd.read_csv(path, index_col="bus")
+
+
+@st.cache_data(show_spinner=False)
+def load_region_carrier(key: str, kind: str = "generation") -> pd.DataFrame | None:
+    """
+    Per-NESO-region per-carrier annual matrix (index=regionid), or None if not
+    built. kind in {"generation", "emissions"}. Drives the per-region mix pie.
+    Built by aggregate_neso_regions.py once the bus_carrier matrices exist.
+    """
+    path = _topo_file(key, f"region_carrier_{kind}.csv")
+    if not path.exists():
+        return None
+    return pd.read_csv(path, index_col="regionid")
+
+
+@st.cache_data(show_spinner=False)
+def load_catchment_names(key: str) -> dict[str, str]:
+    """
+    Curated bus -> human-readable area name for one topology's catchments, or an
+    empty dict if no names file exists. Source: data/topology/<dir>/catchment_names.csv.
+    """
+    rel_dir = TOPOLOGIES[key]["dir"]
+    if rel_dir is None:
+        return {}
+    path = _data(f"data/topology/{rel_dir}/catchment_names.csv")
+    if not path.exists():
+        return {}
+    df = pd.read_csv(path)
+    return dict(zip(df["bus"].astype(str), df["area_name"].astype(str)))
 
 
 @st.cache_data(show_spinner=False)

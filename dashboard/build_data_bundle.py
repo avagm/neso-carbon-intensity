@@ -34,9 +34,19 @@ PER_TOPOLOGY = [
     "hourly_emissions_by_carrier.csv",
     "generation_by_carrier.csv",
     "buses_with_ci.csv",
+    "bus_carrier_generation.csv",
+    "bus_carrier_emissions.csv",
     "neso_region_intensity.csv",
+    "region_carrier_generation.csv",
+    "region_carrier_emissions.csv",
     "bus_catchments.geojson",
     "manifest.json",
+]
+
+# Per-topology files that live outside results/ (repo-relative template, {dir}
+# is the topology directory name). Missing files are skipped.
+PER_TOPOLOGY_EXTRA = [
+    "data/topology/{dir}/catchment_names.csv",
 ]
 
 # Shared files (repo-relative paths).
@@ -64,6 +74,8 @@ def main() -> None:
     for topo in TOPOLOGIES:
         for fname in PER_TOPOLOGY:
             copy(f"results/2023_topology_default/{topo}/{fname}", copied)
+        for tmpl in PER_TOPOLOGY_EXTRA:
+            copy(tmpl.format(dir=topo), copied)
     for rel in SHARED:
         copy(rel, copied)
 

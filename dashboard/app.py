@@ -22,6 +22,8 @@ Run:
 """
 from __future__ import annotations
 
+from functools import partial
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -32,16 +34,14 @@ from lib import data as D
 from lib import theme as T
 
 st.set_page_config(page_title="GB Carbon Intensity — PyPSA-GB",
-                   page_icon="\U0001F50C", layout="wide")
+                   page_icon="\U0001F50C", layout="wide",
+                   initial_sidebar_state="expanded")
 
 st.markdown(
     """
     <style>
       .block-container {padding-top: 1.6rem; padding-bottom: 1rem;}
       [data-testid="stMetricValue"] {font-size: 1.5rem;}
-      .prov-banner {background:#fff4e5; border-left:4px solid #e8792b;
-        padding:0.5rem 0.9rem; border-radius:4px; font-size:0.9rem;
-        color:#7a3e00; margin-bottom:0.6rem;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -115,16 +115,221 @@ def group_colours(grouping: str, groups) -> list[str]:
     return [cmap.get(g, "#999999") for g in groups]
 
 
-def provisional_note(key: str) -> None:
-    if D.TOPOLOGIES[key]["provisional"]:
-        st.markdown(
-            '<div class="prov-banner"><b>ETYS 2000-bus is provisional.</b> '
-            "From the suboptimal barrier interior point (HPC job 2899855). The "
-            "annual mean (189 gCO2/kWh) is validated as the real congestion "
-            "signature, but it carries a +0.36% generation-demand smear and two "
-            "Northern Ireland imports on the NESO Other fallback. See "
-            "deliverables/etys_data_validation.md.</div>",
-            unsafe_allow_html=True)
+def group_series(s: pd.Series, grouping: str) -> pd.Series:
+    """Collapse a carrier -> value Series into the chosen grouping, ordered,
+    dropping empty groups. The Series-level analogue of group_columns."""
+    gmap = C.GROUPINGS[grouping]["map"]
+    grouped = s.groupby(lambda c: gmap.get(c, "Other")).sum()
+    order = C.GROUPINGS[grouping]["order"]
+    if order:
+        cols = [g for g in order if g in grouped.index]
+        cols += [g for g in grouped.index if g not in cols]
+        grouped = grouped.reindex(cols)
+    else:
+        grouped = grouped.sort_values(ascending=False)
+    return grouped[grouped > 0]
+
+
+def top_carriers_html(gen: pd.Series, n: int = 3) -> str:
+    """Top-n technologies by generation as a small hover card body."""
+    g = group_series(gen, "Technology")
+    total = float(g.sum())
+    if total <= 0:
+        return "no local generation"
+    return "<br>".join(f"{name} {v / total * 100:.0f}%"
+                       for name, v in g.head(n).items())
+
+
+def mix_pie(gen: pd.Series, grouping: str, title: str) -> go.Figure | None:
+    """Donut of one area's local generation mix under the chosen grouping."""
+    g = group_series(gen, grouping)
+    if float(g.sum()) <= 0:
+        return None
+    fig = go.Figure(go.Pie(
+        labels=list(g.index), values=list(g.values), hole=0.5,
+        marker=dict(colors=group_colours(grouping, g.index)),
+        sort=False, direction="clockwise", texttemplate="%{percent}",
+        hovertemplate="%{label}<br>%{value:,.0f} MWh<br>%{percent}<extra></extra>"))
+    fig.update_layout(**T.base_layout(
+        title=title, height=300,
+        legend=dict(orientation="v", x=1.0, y=0.5, font=dict(size=11)),
+        margin=dict(l=6, r=6, t=52, b=6)))
+    return fig
+
+
+def focus_stats(gen: pd.Series, em: pd.Series) -> dict:
+    """Headline numbers for one area from its per-carrier generation/emissions."""
+    tot = float(gen.sum())
+    em_t = float(em.sum())
+    ren = float(gen[[c for c in gen.index if c in C.RENEWABLE_CARRIERS]].sum())
+    zc = float(gen[[c for c in gen.index if c in C.ZERO_CARBON_CARRIERS]].sum())
+    dom = group_series(gen, "Technology")
+    return {
+        "ci": em_t / tot * 1000.0 if tot else float("nan"),
+        "total_gwh": tot / 1e3,
+        "ren_share": ren / tot * 100.0 if tot else 0.0,
+        "zc_share": zc / tot * 100.0 if tot else 0.0,
+        "dominant": dom.index[0] if len(dom) else "none",
+    }
+
+
+def ranking_table(rank: pd.DataFrame, focus_name: str | None,
+                  height: int | None = None) -> None:
+    """
+    Render an area-ranking table coloured by carbon intensity.
+
+    rank must carry columns: "Area", "gCO2/kWh", "TWh/yr", "Largest source".
+    The carbon-intensity cell is shaded on the NESO band scale; the focused
+    area's row is emboldened.
+    """
+    disp = rank.reset_index(drop=True).copy()
+    disp.insert(0, "#", range(1, len(disp) + 1))
+
+    def _ci_colours(col: pd.Series) -> list[str]:
+        out = []
+        for v in col:
+            colour = T.ci_index(float(v))[1] if pd.notna(v) else "#eeeeee"
+            out.append(f"background-color:{colour};color:white;font-weight:600")
+        return out
+
+    def _focus_row(row: pd.Series) -> list[str]:
+        on = focus_name is not None and row["Area"] == focus_name
+        return ["font-weight:700" if on else "" for _ in row]
+
+    sty = (disp.style
+           .format({"gCO2/kWh": "{:.0f}", "TWh/yr": "{:.2f}"})
+           .apply(_ci_colours, subset=["gCO2/kWh"])
+           .apply(_focus_row, axis=1))
+    if height is None:
+        height = min(38 * (len(disp) + 1) + 3, 560)
+    st.dataframe(sty, hide_index=True, width="stretch", height=height)
+
+
+def _map_select_callback(chart_key: str, box_key: str,
+                         names_by_point: tuple[str, ...]) -> None:
+    """on_select handler: set the focus selectbox to the clicked area.
+
+    Reads the selection Streamlit stored under the chart key and maps the clicked
+    point to its area name. Wrapped defensively so a stray selection shape never
+    breaks a rerun."""
+    try:
+        state = st.session_state.get(chart_key, {})
+        points = state.get("selection", {}).get("points", []) if state else []
+        if not points:
+            return
+        idx = points[0].get("point_index")
+        if idx is None or idx >= len(names_by_point):
+            return
+        st.session_state[box_key] = names_by_point[idx]
+    except Exception:
+        pass
+
+
+def interactive_area_map(*, key: str, style: str, geojson: dict,
+                         featureidkey: str, area: pd.DataFrame,
+                         location_col: str, gen_mat: pd.DataFrame | None,
+                         em_mat: pd.DataFrame | None, caption: str) -> None:
+    """
+    Shared renderer for the clickable NESO-region and catchment choropleths.
+
+    `area` is one row per drawn area, already ordered for the choropleth, with
+    columns: location_col (the geojson join key), "area_name", "ci", "gen_twh",
+    and "dominant" (raw carrier name). `gen_mat`/`em_mat` are per-area
+    per-carrier matrices indexed by location_col (or None when no mix breakdown
+    exists, e.g. ETYS regions without the carrier matrices); the pie and the
+    enriched hover card are shown only where a row is present.
+
+    Renders: the choropleth (enriched hover, click-to-focus), a focus panel
+    (selectbox + generation-mix donut + headline numbers), and a ranking table.
+    """
+    grouping = st.sidebar.radio("Mix grouping", list(C.GROUPINGS.keys()),
+                                key=f"mapmix_{style}")
+
+    area = area.reset_index(drop=True).copy()
+    have_mix = gen_mat is not None
+    locs = area[location_col].tolist()
+
+    # Hover card body: top carriers where we have a mix, else dominant carrier.
+    def _hover(loc, dom):
+        if have_mix and loc in gen_mat.index:
+            return top_carriers_html(gen_mat.loc[loc])
+        return f"largest: {C.pretty(dom)}"
+    area["hover"] = [_hover(l, d) for l, d in zip(area[location_col], area["dominant"])]
+
+    # Ranking (highest CI first) drives both the table and the selectbox order.
+    rank = area.sort_values("ci", ascending=False).reset_index(drop=True)
+    option_names = rank["area_name"].tolist()
+    name_to_loc = dict(zip(area["area_name"], area[location_col]))
+
+    box_key = f"focus_{style}_{key}"
+    chart_key = f"map_{style}_{key}"
+    # Default focus: the highest-intensity area that actually has a local mix, so
+    # the pie shows on load. (The single highest-CI area can be a region with no
+    # modelled bus, whose colour is carried from a neighbour and has nothing to plot.)
+    default_focus = option_names[0]
+    if have_mix:
+        with_mix = [n for n in option_names if name_to_loc[n] in gen_mat.index]
+        if with_mix:
+            default_focus = with_mix[0]
+    if box_key not in st.session_state or st.session_state[box_key] not in option_names:
+        st.session_state[box_key] = default_focus
+
+    fig = go.Figure(go.Choroplethmap(
+        geojson=geojson, locations=area[location_col], z=area["ci"],
+        featureidkey=featureidkey, colorscale=T.CI_COLORSCALE,
+        zmin=T.CI_MIN, zmax=T.CI_MAX,
+        marker=dict(opacity=0.8, line=dict(width=0.5, color="white")),
+        colorbar=dict(title="gCO2/kWh"),
+        customdata=np.stack([area["area_name"], area["gen_twh"],
+                             area["hover"]], axis=-1),
+        hovertemplate="<b>%{customdata[0]}</b><br>%{z:.0f} gCO2/kWh<br>"
+                      "%{customdata[1]:.1f} TWh/yr<br>%{customdata[2]}"
+                      "<extra></extra>"))
+    fig.update_layout(
+        map=dict(style="carto-positron", center=dict(lat=54.7, lon=-3.0), zoom=4.4),
+        margin=dict(l=0, r=0, t=0, b=0), height=560)
+
+    map_col, panel_col = st.columns([3, 2], gap="medium")
+    with map_col:
+        st.plotly_chart(
+            fig, width="stretch", key=chart_key, selection_mode="points",
+            on_select=partial(_map_select_callback, chart_key, box_key,
+                              tuple(area["area_name"].tolist())))
+        st.caption(caption)
+
+    with panel_col:
+        st.markdown("**Hover** an area for a quick read; **click** it (or pick "
+                    "one below) to drill in.")
+        focus_name = st.selectbox("Focus area", option_names, key=box_key)
+        loc = name_to_loc.get(focus_name)
+        frow = area[area[location_col] == loc].iloc[0]
+
+        if have_mix and loc in gen_mat.index:
+            gen = gen_mat.loc[loc]
+            em = em_mat.loc[loc] if (em_mat is not None and loc in em_mat.index) \
+                else pd.Series(0.0, index=gen.index)
+            pie = mix_pie(gen, grouping, f"{focus_name} — generation mix")
+            stats = focus_stats(gen, em)
+            if pie is not None:
+                st.plotly_chart(pie, width="stretch", key=f"pie_{style}_{key}")
+            c1, c2 = st.columns(2)
+            c1.metric("Carbon intensity", f"{stats['ci']:.0f} gCO2/kWh")
+            c2.metric("Generation", f"{stats['total_gwh']:,.0f} GWh/yr")
+            c1.metric("Renewable share", f"{stats['ren_share']:.0f} %")
+            c2.metric("Zero-carbon share", f"{stats['zc_share']:.0f} %")
+            st.caption(f"Largest source: {C.pretty(stats['dominant'])}.")
+        else:
+            st.metric("Carbon intensity", f"{float(frow['ci']):.0f} gCO2/kWh")
+            st.info("No modelled generation sits in this area (its colour is "
+                    "carried from the nearest generating bus), so there is no "
+                    "local mix to break down.")
+
+    st.markdown("##### Area ranking, most to least carbon intensive")
+    table = rank.rename(columns={"area_name": "Area", "ci": "gCO2/kWh",
+                                 "gen_twh": "TWh/yr"})
+    table["Largest source"] = table["dominant"].map(C.pretty)
+    ranking_table(table[["Area", "gCO2/kWh", "TWh/yr", "Largest source"]],
+                  focus_name)
 
 
 def add_index_bands(fig: go.Figure) -> None:
@@ -188,7 +393,6 @@ def view_explorer() -> None:
     metric = st.sidebar.radio("Quantity", ["Generation (MWh)", "Emissions (tCO2)"],
                               key="ex_metric")
     start, end, label = period_selector("ex")
-    provisional_note(key)
 
     kind = "generation" if metric.startswith("Generation") else "emissions"
     raw = D.load_hourly_carrier(key, kind).loc[start:end]
@@ -257,12 +461,21 @@ def view_heatmap() -> None:
                                format_func=lambda k: D.TOPOLOGIES[k]["label"],
                                key="hm_key")
     mode = st.sidebar.radio("Mode", ["Intensity", "Difference vs NESO"], key="hm_mode")
-    provisional_note(key)
 
     combined = D.load_combined_ci()
-    s = combined[key]
-    if mode == "Difference vs NESO" and key != "neso_actual":
-        s = (combined[key] - combined["neso_actual"])
+    # The NESO actual has ~47 unpublished hours in 2023 (a 45.5-hour outage on
+    # 20-22 Oct, plus five isolated periods). For the heatmap only, use the
+    # gap-filled NESO series so the grid has no blank cells; statistics elsewhere
+    # use the pure actual.
+    neso_filled, n_filled = D.load_neso_hourly_filled()
+    neso_involved = key == "neso_actual" or mode == "Difference vs NESO"
+
+    if key == "neso_actual":
+        s = neso_filled
+    elif mode == "Difference vs NESO":
+        s = combined[key].sub(neso_filled)
+    else:
+        s = combined[key]
     s = s.dropna()
 
     # Hour of day on the y-axis (24 legible rows), calendar date across the
@@ -294,10 +507,16 @@ def view_heatmap() -> None:
                                       xaxis_title=None, yaxis_title="hour of day (UTC)"))
     fig.update_xaxes(dtick="M1", tickformat="%b")
     st.plotly_chart(fig, width="stretch")
-    st.caption("Each column is one day of 2023, each row one hour of the day. "
+    caption = ("Each column is one day of 2023, each row one hour of the day. "
                "Evening-peak hours read as a persistent red band; midday in "
                "summer dips green. Switch to Difference vs NESO to see when and "
                "where a topology over- or under-states intensity.")
+    if neso_involved and n_filled:
+        caption += (f" NESO did not publish an actual intensity for {n_filled} "
+                    "hours (mainly a 45.5-hour outage on 20-22 October); those "
+                    "cells are filled from the NESO forecast or interpolated for "
+                    "display and are excluded from every statistic.")
+    st.caption(caption)
 
 
 # --------------------------------------------------------------------------
@@ -330,14 +549,8 @@ def _map_points(buses: pd.DataFrame) -> None:
                "(green), thermal hubs high (red).")
 
 
-def _map_catchments(key: str) -> None:
-    """Voronoi catchment fill: the area nearest each bus, coloured by its CI."""
-    cat = D.load_bus_catchments(key)
-    if cat is None:
-        st.info("Catchment polygons not found. Run "
-                "`python scripts/build_bus_catchments.py` for this topology.")
-        return
-    geojson, props = cat
+def _plain_catchment_map(geojson: dict, props: pd.DataFrame) -> None:
+    """Static catchment fill (no drill-in) for many-cell topologies like ETYS."""
     fig = go.Figure(go.Choroplethmap(
         geojson=geojson, locations=props["bus"],
         z=props["gen_view_gCO2_per_kWh"], featureidkey="properties.bus",
@@ -352,11 +565,51 @@ def _map_catchments(key: str) -> None:
         map=dict(style="carto-positron", center=dict(lat=54.7, lon=-3.0), zoom=4.4),
         margin=dict(l=0, r=0, t=10, b=0), height=700)
     st.plotly_chart(fig, width="stretch")
-    st.caption(f"GB tiled into {len(props)} catchments, one per bus: every "
-               "location is coloured by the generation-view intensity of its "
-               "nearest bus. This is the point map filled in. On the coarse "
-               "networks it is a handful of large regions; on ETYS a fine mosaic. "
-               "Offshore and interconnector buses are excluded.")
+    st.caption(f"GB tiled into {len(props)} catchments, one per bus, each "
+               "coloured by the generation-view intensity of its nearest bus. "
+               "This is the point map filled in (a fine mosaic on ETYS, too many "
+               "cells to rank or drill into). Offshore and interconnector buses "
+               "are excluded.")
+
+
+def _map_catchments(key: str) -> None:
+    """Voronoi catchment fill: the area nearest each bus, coloured by its CI.
+
+    Coarse topologies (a few dozen cells) get the interactive panel with rational
+    area names; the 666-cell ETYS mosaic stays a plain fill."""
+    cat = D.load_bus_catchments(key)
+    if cat is None:
+        st.info("Catchment polygons not found. Run "
+                "`python scripts/build_bus_catchments.py` for this topology.")
+        return
+    geojson, props = cat
+    gen_mat = D.load_bus_carrier(key, "generation")
+    em_mat = D.load_bus_carrier(key, "emissions")
+
+    if gen_mat is None or len(props) > 60:
+        _plain_catchment_map(geojson, props)
+        return
+
+    names = D.load_catchment_names(key)
+    gwh = gen_mat.sum(axis=1)  # per-bus annual MWh
+    area = pd.DataFrame({
+        "bus": props["bus"].astype(str),
+        "area_name": props["bus"].astype(str).map(lambda b: names.get(b, b)),
+        "ci": props["gen_view_gCO2_per_kWh"],
+        "gen_twh": props["bus"].astype(str).map(
+            lambda b: float(gwh.get(b, 0.0)) / 1e6),
+        "dominant": props["dominant_carrier"],
+    })
+    interactive_area_map(
+        key=key, style="catch", geojson=geojson,
+        featureidkey="properties.bus", area=area, location_col="bus",
+        gen_mat=gen_mat, em_mat=em_mat,
+        caption=(f"GB tiled into {len(area)} catchments, one per grid supply "
+                 "point, each coloured by its generation-view intensity (local "
+                 "emissions / local generation). Area names are descriptive "
+                 "labels for each substation's catchment, not official NESO "
+                 "region boundaries. Offshore and interconnector buses are "
+                 "excluded."))
 
 
 def _map_regions(key: str) -> None:
@@ -367,31 +620,33 @@ def _map_regions(key: str) -> None:
         st.info("NESO region data not found. Run "
                 "`python scripts/aggregate_neso_regions.py` for this topology.")
         return
-    fig = go.Figure(go.Choroplethmap(
-        geojson=geojson, locations=region["regionid"],
-        z=region["gen_view_gCO2_per_kWh"], featureidkey="properties.regionid",
-        colorscale=T.CI_COLORSCALE, zmin=T.CI_MIN, zmax=T.CI_MAX,
-        marker=dict(opacity=0.78, line=dict(width=1, color="white")),
-        colorbar=dict(title="gCO2/kWh"),
-        text=region["shortname"], customdata=np.stack([
-            region["shortname"], region["total_generation_twh"],
-            region["dominant_carrier"].map(C.pretty)], axis=-1),
-        hovertemplate="<b>%{customdata[0]}</b><br>%{z:.0f} gCO2/kWh<br>"
-                      "%{customdata[1]:.1f} TWh/yr<br>"
-                      "largest: %{customdata[2]}<extra></extra>"))
-    fig.update_layout(
-        map=dict(style="carto-positron", center=dict(lat=54.7, lon=-3.0), zoom=4.4),
-        margin=dict(l=0, r=0, t=10, b=0), height=700)
-    st.plotly_chart(fig, width="stretch")
-    nb = int(region["n_buses_with_generation"].sum())
-    filled = int((region.get("fill_method", pd.Series(dtype=str)) == "nearest_bus").sum())
-    fill_note = (f" {filled} region(s) with no modelled bus take the nearest "
-                 "bus's value." if filled else "")
-    st.caption(f"All {len(region)} NESO carbon-intensity regions (GB GSP groups), "
-               f"coloured by generation-weighted regional intensity aggregated "
-               f"from {nb} modelled buses.{fill_note} Generation view: where "
-               "carbon-emitting generation sits, not the NESO consumption-side "
-               "regional series. Offshore and interconnector buses are excluded.")
+    region = region.copy()
+    region["regionid"] = region["regionid"].astype(int)
+    gen_mat = D.load_region_carrier(key, "generation")
+    em_mat = D.load_region_carrier(key, "emissions")
+    if gen_mat is not None:
+        gen_mat = gen_mat.copy(); gen_mat.index = gen_mat.index.astype(int)
+    if em_mat is not None:
+        em_mat = em_mat.copy(); em_mat.index = em_mat.index.astype(int)
+
+    area = pd.DataFrame({
+        "regionid": region["regionid"],
+        "area_name": region["shortname"],
+        "ci": region["gen_view_gCO2_per_kWh"],
+        "gen_twh": region["total_generation_twh"],
+        "dominant": region["dominant_carrier"],
+    })
+    interactive_area_map(
+        key=key, style="region", geojson=geojson,
+        featureidkey="properties.regionid", area=area, location_col="regionid",
+        gen_mat=gen_mat, em_mat=em_mat,
+        caption=(f"All {len(area)} NESO carbon-intensity regions (GB GSP "
+                 "groups), coloured by generation-weighted regional intensity. "
+                 "Generation view: where carbon-emitting generation sits, not "
+                 "the NESO consumption-side regional series. Regions with no "
+                 "modelled bus take the nearest bus's colour and have no local "
+                 "mix to break down. Offshore and interconnector buses are "
+                 "excluded."))
 
 
 def view_map() -> None:
@@ -413,7 +668,6 @@ def view_map() -> None:
         key = st.sidebar.selectbox("Topology", keys,
                                    format_func=lambda k: D.TOPOLOGIES[k]["label"],
                                    key="map_topo_region")
-        provisional_note(key)
         _map_regions(key)
         return
 
@@ -426,7 +680,6 @@ def view_map() -> None:
         key = st.sidebar.selectbox("Topology", keys,
                                    format_func=lambda k: D.TOPOLOGIES[k]["label"],
                                    key="map_topo_catch")
-        provisional_note(key)
         _map_catchments(key)
         return
 
@@ -436,7 +689,6 @@ def view_map() -> None:
     key = st.sidebar.selectbox("Topology", keys,
                                format_func=lambda k: D.TOPOLOGIES[k]["label"],
                                key="map_topo")
-    provisional_note(key)
     buses = D.load_buses(key).copy()
     buses = buses[buses["total_generation_mwh"] > 0].dropna(
         subset=["gen_view_gCO2_per_kWh"])
@@ -513,7 +765,6 @@ def view_validation() -> None:
     key = st.selectbox("Topology", MODEL_OPTS,
                        format_func=lambda k: D.TOPOLOGIES[k]["label"],
                        key="val_topo")
-    provisional_note(key)
     ann = D.load_annual_carrier(key).sort_values("generation_twh", ascending=True)
     ann = ann[ann["generation_twh"] > 0.05]
     klass = [C.CARRIER_CARBON_CLASS.get(c, "High carbon") for c in ann.index]
@@ -559,8 +810,7 @@ def main() -> None:
             "Modelled hourly system carbon intensity from PyPSA-GB (commit "
             "`074ea25e`), post-processed with the NESO published emission "
             "factors. NESO actual is the national series from the Carbon "
-            "Intensity API. ETYS 2000-bus is provisional (see "
-            "`deliverables/etys_data_validation.md`).")
+            "Intensity API.")
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ Views appear in the sidebar in this order:
 |---|---|
 | **Overview** | Headline annual-mean intensities per topology vs NESO, and the hourly series for any window with NESO-style intensity bands. |
 | **Time-slice explorer** | Generation or emissions mix as a pie plus a stacked area, sliceable to any day, week, month, or custom range, grouped by technology, carbon class (zero / low / high), or renewable status. Headline renewable share, zero-carbon share, and mean intensity for the window. |
-| **Geographical map** | Three styles. **NESO regions** (default): the 14 GSP-group regions coloured by generation-weighted regional intensity, every region filled (a region with no modelled bus takes the nearest bus's value). **Points**: one marker per bus, area by generation, colour by intensity. **Catchment areas**: the point map filled in, a Voronoi tessellation where every location is coloured by its nearest bus, a handful of regions on the coarse networks and a fine mosaic on ETYS. |
+| **Geographical map** | Three styles. **NESO regions** (default): the 14 GSP-group regions coloured by generation-weighted regional intensity, every region filled (a region with no modelled bus takes the nearest bus's value). **Points**: one marker per bus, area by generation, colour by intensity. **Catchment areas**: the point map filled in, a Voronoi tessellation where every location is coloured by its nearest bus, a few dozen areas on the coarse networks (with plain-English names from `catchment_names.csv`) and a 666-cell mosaic on ETYS. Regions and the coarse catchments are interactive: hover for intensity and top carriers, click (or use the Focus area box) for a generation-mix pie and headline numbers, with a ranking table (most to least carbon intensive) under the map. ETYS catchments stay a static fill (too many cells to rank or drill). |
 | **Calendar heatmap** | Hour-of-day (rows) by calendar date (columns) intensity heatmap on the NESO green-to-red scale, per series, with a model-minus-NESO difference mode. |
 | **Validation** | One scrolling page: model-vs-NESO density scatter (with R, RMSE, bias) per topology, the intensity duration curve, and top carriers by annual generation coloured by carbon class. Reproduces the team's three reference figures (see `reference/`). |
 
@@ -76,8 +76,11 @@ topology directory:
 | `hourly_emissions_by_carrier.csv` | `scripts/extract_dashboard_data.py` | time-slice explorer (emissions mix) |
 | `generation_by_carrier.csv` | `system_carbon_intensity.py` | validation top-carriers bar |
 | `buses_with_ci.csv` | `scripts/extract_dashboard_data.py --per-bus` | geographical map (points) |
+| `bus_carrier_generation.csv`, `bus_carrier_emissions.csv` | `scripts/extract_dashboard_data.py --per-bus` | per-catchment generation-mix pie + hover |
 | `neso_region_intensity.csv` | `scripts/aggregate_neso_regions.py` | NESO region choropleth |
+| `region_carrier_generation.csv`, `region_carrier_emissions.csv` | `scripts/aggregate_neso_regions.py` | per-region generation-mix pie + hover |
 | `bus_catchments.geojson` | `scripts/build_bus_catchments.py` | geographical map (catchment areas) |
+| `data/topology/<topo>/catchment_names.csv` | hand-curated (committed) | plain-English catchment names (17- and 32-bus) |
 
 `results/neso_2023/national_intensity.csv` is the NESO truth series, and
 `data/topology/neso_regions.geojson` (written once by the region aggregation
@@ -115,10 +118,13 @@ Repeat for `reduced_32bus`, `reduced_32bus_copperplate` (no `--per-bus`), and
 ```
 dashboard/
 ├── app.py                 # Streamlit entrypoint: sidebar router + the five views
+├── build_data_bundle.py   # copy the files the dashboard reads into dashboard/data/
 ├── lib/
 │   ├── data.py            # cached CSV loaders, topology registry, NESO alignment
 │   ├── carriers.py        # carrier -> technology / carbon-class / renewable maps + colours
 │   └── theme.py           # NESO-style colour scale, index bands, Plotly layout defaults
+├── tests/
+│   └── test_map_interactions.py  # AppTest checks for the map + heatmap views
 ├── reference/
 │   ├── README.md          # the team's three reference figures and where the dashboard reproduces them
 │   └── preview/           # static PNG previews rendered by analysis/render_dashboard_gallery.py
@@ -128,10 +134,9 @@ dashboard/
 
 ## A note on ETYS
 
-The ETYS 2000-bus series is from the suboptimal barrier interior point (HPC job
-2899855) and is labelled provisional throughout the app. Its annual mean
-(189 gCO2/kWh) is validated as the genuine congestion signature of full
-transmission detail (see `deliverables/etys_data_validation.md`), but it carries
-a +0.36% generation-demand smear and two Northern Ireland imports on the NESO
-Other fallback, so it is shown with a provisional banner and should be replaced
-by the tightened re-solve when that lands.
+The ETYS 2000-bus series is taken at the interior point of its barrier solve (HPC
+job 2899855). Its annual mean (189 gCO2/kWh) is validated as the genuine
+congestion signature of full transmission detail (see
+`deliverables/etys_data_validation.md`); it carries a +0.36% generation-demand
+smear and two Northern Ireland imports on the NESO Other fallback, and should be
+replaced by the tightened re-solve when that lands.

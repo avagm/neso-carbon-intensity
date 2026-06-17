@@ -1,0 +1,25 @@
+bus,area_name
+Z1_1,Shetland
+Z1_2,Outer Hebrides and Skye
+Z1_3,North Highlands (Sutherland and Caithness)
+Z1_4,West Highlands (Lochaber)
+Z2,Aberdeenshire and Grampian
+Z3,Central Highlands and Perthshire
+Z4,Argyll and Kintyre
+Z5,Scottish Central Belt
+Z6,Southern Uplands and Borders
+Z7,Cumbria and North East England
+Z8,Yorkshire and the Humber
+Z9,North West England and North Wales
+Z10,Lincolnshire and the East Midlands
+Z11,West Midlands
+Z12,East Anglia
+Z13,South Wales and the Severn
+Z14,Greater London
+Z15,Kent and the South East
+Z16,Central Southern England
+Z17,South West England
+HVDC_External_Netherlands_Maasvlakte,Netherlands interconnector (BritNed)
+HVDC_External_France_Calais,France interconnector (IFA)
+HVDC_External_Belgium_Zeebrugge,Belgium interconnector (Nemo Link)
+HVDC_External_Ireland_Rush_North_Beach,Ireland interconnector (EWIC)
