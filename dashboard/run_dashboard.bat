@@ -8,7 +8,8 @@ REM PowerShell conda hook is blocked by execution policy on this machine).
 REM
 REM If the environment lives elsewhere, edit the PY path below.
 REM ---------------------------------------------------------------------------
-set "PY=C:\Users\user\miniforge3\envs\pypsa-gb\python.exe"
+set "PY=C:\Users\28894\anaconda3\envs\pypsa-gb\python.exe"
+
 
 REM Repository root is one level up from this dashboard/ folder.
 cd /d "%~dp0.."
