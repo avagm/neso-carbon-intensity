@@ -1,5 +1,5 @@
-# NESO Carbon Intensity Project - ELEC60014
-Imperial College London | Group Project
+# Carbon Intensity Project 
+Imperial College London | Group Project with NESO brief
 
 Hourly carbon intensity of the GB electricity system for 2023, from PyPSA-GB
 dispatch, validated against the NESO Carbon Intensity API.
