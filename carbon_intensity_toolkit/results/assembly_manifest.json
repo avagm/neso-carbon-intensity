@@ -1,0 +1,58 @@
+{
+  "generated_utc": "2026-05-24T10:22:34+00:00",
+  "script": "build_topology_heatmap_data.py",
+  "inputs": {
+    "zonal": "results\\2023_topology_default\\zonal_17bus\\system_carbon_intensity.csv",
+    "reduced": "results\\2023_topology_default\\reduced_32bus\\system_carbon_intensity.csv",
+    "neso": "results\\neso_2023\\national_intensity.csv",
+    "copperplate": "results\\2023_topology_default\\reduced_32bus_copperplate\\system_carbon_intensity.csv"
+  },
+  "hours_per_input": {
+    "zonal": 8760,
+    "reduced": 8760,
+    "neso": 8761,
+    "copperplate": 8760
+  },
+  "hours_aligned": 8713,
+  "timestamp_first": "2023-01-01 00:00:00+00:00",
+  "timestamp_last": "2023-12-31 23:00:00+00:00",
+  "series_stats_gCO2_per_kWh": {
+    "neso_actual": {
+      "mean": 152.146,
+      "min": 0.0,
+      "max": 307.5,
+      "std": 62.553
+    },
+    "zonal_17bus": {
+      "mean": 144.787,
+      "min": 0.001,
+      "max": 330.901,
+      "std": 83.539
+    },
+    "reduced_32bus": {
+      "mean": 143.203,
+      "min": 3.021,
+      "max": 317.934,
+      "std": 73.855
+    },
+    "reduced_32bus_copperplate": {
+      "mean": 133.525,
+      "min": 0.0,
+      "max": 319.931,
+      "std": 81.518
+    }
+  },
+  "topology_difference_gCO2_per_kWh": {
+    "mean_reduced_minus_zonal": -1.584,
+    "mean_abs_reduced_minus_zonal": 15.969
+  },
+  "mean_offset_from_neso_gCO2_per_kWh": {
+    "zonal_17bus": -7.358,
+    "reduced_32bus": -8.943,
+    "reduced_32bus_copperplate": -18.621
+  },
+  "transmission_constraint_impact_gCO2_per_kWh": {
+    "mean_reduced_minus_copperplate": 9.678,
+    "mean_abs_reduced_minus_copperplate": 12.408
+  }
+}

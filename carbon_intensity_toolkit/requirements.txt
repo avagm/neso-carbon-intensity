@@ -1,0 +1,22 @@
+# Python dependencies for the carbon intensity toolkit.
+#
+# A conda environment is recommended over pip on Windows, because pyproj and
+# pypsa pull geospatial libraries (GEOS, PROJ, GDAL) that do not install
+# cleanly from pip wheels there. The versions below are those the topology
+# comparison was run and validated against; the post-processors are not
+# sensitive to minor version drift, but the HPC ETYS solve reproduces the
+# PyPSA-GB formulation exactly only at the pinned pypsa and linopy versions.
+
+pypsa==1.2.0          # tested version; solve faithfulness is pinned to this
+linopy==0.6.7         # optimisation backend used by pypsa
+pandas>=2.0
+numpy>=1.24
+requests>=2.28        # pull_neso_2023.py only
+pyproj>=3.5           # extract_topology_geometry.py only
+netcdf4>=1.6          # reading and writing solved-network .nc files
+
+# A linear-program solver is needed to re-solve networks
+# (solve_softcopperplate.py, solve_etys_hpc.py). The post-processors that read
+# an already-solved network do not need one. Either:
+#   gurobi            # used for the topology comparison (academic licence)
+#   highspy           # open-source alternative, no licence; solves the same LP

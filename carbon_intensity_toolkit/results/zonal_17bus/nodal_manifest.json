@@ -1,0 +1,66 @@
+{
+  "generated_utc": "2026-05-26T12:49:09+00:00",
+  "script": "nodal_carbon_intensity.py",
+  "label": "Zonal 17-bus",
+  "network_path": "..\\PyPSA-GB-default\\resources\\network\\Historical_2023_zonal_year_solved.nc",
+  "network_basename": "Historical_2023_zonal_year_solved.nc",
+  "network_sha256": "331e7d1fab379dd89507bc05f47145f576bdabf2ba2c9b7a817bc5a451e210ee",
+  "pypsa_gb_commit": "074ea25ec0ca83ecfd3703b2af3a820a25518c50",
+  "n_buses": 24,
+  "n_generators": 2747,
+  "n_storage_units": 81,
+  "n_snapshots": 8760,
+  "snapshot_first": "2023-01-01 00:00:00",
+  "snapshot_last": "2023-12-31 23:00:00",
+  "neso_carrier_factors_gCO2_per_kWh": {
+    "wind_onshore": 0.0,
+    "wind_offshore": 0.0,
+    "solar_pv": 0.0,
+    "large_hydro": 0.0,
+    "small_hydro": 0.0,
+    "tidal_stream": 0.0,
+    "shoreline_wave": 0.0,
+    "nuclear": 0.0,
+    "biomass": 120.0,
+    "biogas": 120.0,
+    "landfill_gas": 120.0,
+    "sewage_gas": 120.0,
+    "advanced_biofuel": 120.0,
+    "CCGT": 394.0,
+    "OCGT": 651.0,
+    "coal": 937.0,
+    "oil": 935.0,
+    "waste_to_energy": 300.0,
+    "load_shedding": 0.0
+  },
+  "neso_interconnector_factors_gCO2_per_kWh": {
+    "Netherlands": 474.0,
+    "France": 53.0,
+    "Ireland": 458.0,
+    "Belgium": 300.0,
+    "Norway": 35.0,
+    "Denmark": 130.0
+  },
+  "unmatched": {
+    "unmatched_carriers": {},
+    "unmatched_interconnector_countries": {}
+  },
+  "system_check": {
+    "annual_generation_weighted_gCO2_per_kWh": 146.655,
+    "total_generation_twh": 274.3748,
+    "total_emissions_Mt": 40.2385,
+    "note": "Reproduces the system-wide value system_carbon_intensity.py writes; agreement to within rounding is the cross-check."
+  },
+  "per_bus_extrema": {
+    "gen_view_max_gCO2_per_kWh": 474.0,
+    "gen_view_argmax_bus": "HVDC_External_Netherlands_Maasvlakte",
+    "cons_view_max_gCO2_per_kWh": 384.384,
+    "cons_view_argmax_bus": "HVDC_External_Netherlands_Maasvlakte",
+    "cons_view_min_gCO2_per_kWh": 51.24,
+    "cons_view_argmin_bus": "Z5"
+  },
+  "software": {
+    "pypsa": "1.2.0",
+    "python": "3.12.12"
+  }
+}
